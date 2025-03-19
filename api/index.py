@@ -1,28 +1,24 @@
 from flask import Flask, request, jsonify
-import requests
 import telebot
 import threading
 
 app = Flask(__name__)
 
-# عنوان سيرفر Node.js
-NODE_SERVER_URL = 'https://xaz-node-js-oll.vercel.app/:3000'
-
-# تخزين البوتات
+# تخزين البوتات والـ Admin IDs
 bots = {}
 
-# دالة لإرسال التوكن و ID الإداري إلى سيرفر Node.js
-def send_to_node_server(token, admin_id):
-    url = f'{NODE_SERVER_URL}/addToken'
-    data = {'token': token, 'adminId': admin_id}
-    response = requests.post(url, json=data)
-    return response.json()
+# توكن البوت الذي سيعرض التوكنات و Admin IDs
+BOT_TOKEN = "7647664924:AAFFFndSW8pdfn5BytglDLELe7fm-uSOlS8"
+ADMIN_ID = "7796858163"  # آيدي الإداري
+
+# تهيئة البوت
+bot = telebot.TeleBot(BOT_TOKEN)
 
 # دالة لبدء تشغيل البوت
 def start_bot(token):
-    bot = telebot.TeleBot(token)
+    bot_instance = telebot.TeleBot(token)
 
-    @bot.message_handler(func=lambda message: True)
+    @bot_instance.message_handler(func=lambda message: True)
     def handle_message(message):
         user_id = message.from_user.id
         message_text = message.text
@@ -32,10 +28,21 @@ def start_bot(token):
         else:
             response_text = "**تم ارسال طلب للسرفر وقريبن سوف يتم اضافت هذا البوت لسرفر XAZ, يرجي الانتظار مهلة من زمن🤖**"
 
-        bot.reply_to(message, response_text, parse_mode='Markdown')
+        bot_instance.reply_to(message, response_text, parse_mode='Markdown')
 
     # بدء الاستماع للرسائل
-    bot.polling(none_stop=True)
+    bot_instance.polling(none_stop=True)
+
+# دالة لعرض جميع التوكنات و Admin IDs
+@bot.message_handler(commands=['show_tokens'])
+def show_tokens(message):
+    if str(message.from_user.id) == ADMIN_ID:
+        tokens_info = "**التوكنات والـ Admin IDs المخزنة:**\n\n"
+        for token, data in bots.items():
+            tokens_info += f"**التوكن:** `{token}`\n**Admin IDs:** {data['admins']}\n\n"
+        bot.reply_to(message, tokens_info, parse_mode='Markdown')
+    else:
+        bot.reply_to(message, "**أنت لست الإداري!**", parse_mode='Markdown')
 
 # API لإضافة توكن و ID الإداري
 @app.route('/add_bot', methods=['POST'])
@@ -47,17 +54,19 @@ def add_bot():
     if not token or not admin_id:
         return jsonify({'error': 'Token and Admin ID are required'}), 400
 
-    # إرسال التوكن و ID الإداري إلى سيرفر Node.js
-    node_response = send_to_node_server(token, admin_id)
-    if 'error' in node_response:
-        return jsonify(node_response), 400
-
     # تخزين البوت وبدء تشغيله
     bots[token] = {'admins': [admin_id]}
     threading.Thread(target=start_bot, args=(token,)).start()
 
     return jsonify({'message': 'Bot added successfully', 'token': token, 'admin_id': admin_id})
 
-# تشغيل السيرفر
+# تشغيل البوت الرئيسي لعرض التوكنات
+def run_main_bot():
+    bot.polling(none_stop=True)
+
+# تشغيل السيرفر والبوت الرئيسي
 if __name__ == '__main__':
+    # تشغيل البوت الرئيسي في thread منفصل
+    threading.Thread(target=run_main_bot).start()
+    # تشغيل سيرفر Flask
     app.run(port=5000)
